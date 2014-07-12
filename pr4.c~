@@ -1,0 +1,614 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <string.h>
+
+#define SIZE 1000
+#define FILESIZE (SIZE * sizeof(char))
+#define BYTES 1024
+
+
+
+/*--------------------------------------------------------------------------------*/
+
+int debug = 1;  // extra output; 1 = on, 0 = off
+
+/*--------------------------------------------------------------------------------*/
+
+
+// using linked allocation
+struct file{
+	char* name;
+
+	struct file* start; // files
+	struct file* nextfileblock; // files
+	struct file* end; // files
+
+	int flag; // 0 if directory, 1 if file, 2 if freemem
+	struct file *next; // freemem linked list, and for directories to point to next file
+
+	struct file *place; // stores the link for CWD
+	char block[BYTES]; // each block size
+};
+
+/*int chdir(char* folder, struct file* disk){
+	//disk[0].place is linked to Current Working Directory
+	if(strcmp(folder,"..") == 0){
+		if(debug == 1) { printf("chdir to ..\n"); }
+		printf("%p, %s \n", disk[0].place -> place, disk[0].place -> name);
+		//printf("%p, %s \n", disk[0].place -> next, disk[0].place -> next ->name);
+
+		// if the below is true, .. is root and we just move there. hacky but it works ^_^
+		if(disk[0].place == disk[0].place -> place) {
+			return 0;
+		} else {
+			struct file* temp = disk[0].place;
+			if(debug == 1) printf("attempting to do chdir ..\n");
+			while(temp->next != NULL) {
+				temp = temp->next;
+				//if(strcmp(temp->next, ))
+			}
+		}
+	} else {
+		// head to CWD , search through that linked list for file name
+		//printf("Got In to else statement\n");
+		struct file* temp = disk[0].place;
+		printf("%p: %s, %p: %s \n", temp, temp -> name, disk[0].place, disk[0].place -> name);
+		//temp = temp -> next;
+		if(debug == 1) printf("%p: %s \n", temp -> next, temp -> name);
+		if(strcmp(temp->next ->name,folder) == 0 && temp -> flag == 0) {
+			printf("Already in dir [%s]\n", folder);
+			return 0;
+		}
+
+		while(temp -> next != NULL){
+			temp = temp -> next;
+			//printf("%p: %s \n",temp->next, temp -> name);
+			if(strcmp(temp ->name,folder) == 0 && temp -> flag == 0){
+				if(debug == 1) { printf("chdir to [%s]\n", temp->name); }
+				disk[0].place = temp;
+				return 0;
+			}
+		}
+	}
+	return 1;
+}*/
+	
+
+    int chdir(char* folder, struct file* disk){
+            //disk[0].place is linked to Current Working Directory
+            if(strcmp(folder,"..") == 0){
+                    printf("Got In to ..\n");
+                    disk[0].place = disk[0].place -> place;
+            }else{
+                    // head to CWD , search through that linked list for file name
+                    //printf("Got In to else statement\n");
+                    struct file* temp = disk[0].place;
+                    //printf("%p: %s, %p: %s \n", temp, temp -> name, disk[0].place, disk[0].place -> name);
+                    //temp = temp -> next;
+                    //printf("%p: %s \n", temp -> next, temp -> name);
+                    while(temp -> next != NULL){
+                            temp = temp -> next;
+                            //printf("%p: %s \n",temp->next, temp -> name);
+                            if(strcmp(temp -> name,folder) == 0 && temp -> flag == 0){
+                                    //printf("Got In ");
+                                    disk[0].place = temp;
+                                    return 0;
+                            }
+                    }
+            }
+           
+            return 1;
+    }
+
+
+
+int mkdir(char* name, struct file* disk){
+
+
+	struct file* temp = disk[0].place;
+	
+	printf("disk[2].next %p \n", disk[0].place -> next);
+	if(temp -> next != NULL){
+		while(temp -> next != NULL){
+			temp = temp -> next;	
+			printf("test 3: %s \n", temp->name);
+			if(strcmp(temp -> name, name) == 0){
+				return -1;
+			}	
+		}
+
+	}
+
+
+	// Go into free mem linked list to find next availible free block
+	// This is disk[1];
+	//printf("Got in \n");
+	temp = disk[1].next;
+	//printf("%p, %p, %p \n", temp, disk[1].next, &disk[3]);
+	temp -> name = name; // Changes the name
+	temp -> flag = 0; // Sets flag to directory
+	temp -> place = disk[0].place; // Links the place to the CWD
+
+	disk[1].next = temp->next; // Changes the free mem linked list so spot is gone
+	temp -> next = NULL; // Sets the next slot to 0
+
+	// Links the new directory to the end of the Linklist tied to the directory above it.
+	struct file* temp2 = disk[0].place;
+	printf("%p: %s \n", temp2 -> next, temp2 -> name);
+	if(temp2 -> next == NULL){
+		temp2 -> next = temp;
+		printf("%p: %s \n", temp2 -> next, temp2 -> next ->name);
+	} else {
+		if(debug == 1) { printf("mkdir linking new dir to linkedlist\n"); }
+		/*while(temp2 -> next != NULL){
+
+			printf("%p: %s \n", temp2, temp2->name);
+			printf("%p: %s \n", temp2 -> next, temp2 -> next -> name);
+			temp2 = temp2 -> next;
+			if( temp2 -> next == NULL ){
+				printf("switched \n");
+				temp2 -> next = temp;
+				return;
+			}
+		}*/
+		temp -> next = temp2 -> next;
+		temp2 -> next = temp;
+		
+	}
+	return 0;
+}
+
+void mkfil(char* name, int size, struct file* disk){
+	if(debug == 1) { printf("mkfil beginning \n"); }
+	struct file* temp = disk[1].next;
+	if(size > BYTES) {
+		int amountOfBlocks = size/BYTES;
+		if(size % BYTES != 0 || size == 0){
+			amountOfBlocks++;
+		}
+
+		int i;
+
+		struct file* startblock = temp;
+
+		for( i=0; i<amountOfBlocks-1; i++){
+			printf("%p \n", temp);
+			temp = temp -> next;
+		}
+
+		struct file* endblock = temp;
+
+		// re set free mem linked list
+		disk[1].next = endblock -> next;
+
+		if(debug == 1) { printf("mkfil (size > BYTES) \n"); }
+
+		temp = startblock;
+		//printf("%p \n", temp);
+		for( i=0; i<amountOfBlocks-1; i++){
+			//disk[1] for free mem
+			
+			printf("%p \n", temp);
+			temp -> name = name;
+			temp -> place = disk[0].place; // Links the place to the CWD
+			temp -> flag = 1;
+			temp -> start = startblock;
+			temp -> end = endblock;
+			temp -> nextfileblock = temp -> next;
+			//temp -> next = temp -> next -> next;
+			temp = temp -> next;
+			//temp -> next = temp;
+		}
+		//temp -> next = NULL;
+		temp -> flag = 1;
+		temp -> next = NULL;
+		startblock -> next = NULL;
+		endblock -> start = startblock;
+		endblock -> place = disk[0].place;
+		endblock -> name = name;
+		endblock -> end = endblock;
+		endblock -> nextfileblock = NULL;
+
+		if(debug == 1) { printf("after mkfil (size > BYTES) \n"); }
+		// link it to CWD
+		// Links the new file to the end of the Linklist tied to the directory above it.
+		struct file* temp2 = disk[0].place;
+		//printf("mkfil: %p: %s \n", temp2 -> next, temp2 -> name);
+		if(temp2 -> next == NULL){
+			temp2 -> next = startblock;
+		} else {
+			/*while(temp2 -> next != NULL){
+				temp2 = temp2 -> next;
+				//printf(" ADFGHDSIGHGDSIDG %p : %s \n", temp2, temp2 -> name);
+				if( temp2 -> next == NULL ){
+					if(debug == 1) { printf("(mkfil- size > BYTES) switched \n"); }
+					temp2 -> next = startblock;
+					return;
+				}
+			}*/
+			startblock -> next = temp2 -> next;
+			temp2 -> next = startblock;
+		}
+		endblock -> next = startblock -> next;
+		//endblock -> next = NULL;
+	}else{
+		if(debug == 1) {
+			printf("mkfil: size < BYTES. (beep boop) \n");
+			printf("pre-variable fields filled for new file: %p: %s \n", temp, temp -> name);
+
+		}
+		temp -> name = name;
+		temp -> place = disk[0].place; // Links the place to the CWD
+		temp -> flag = 1;
+		temp -> start = temp;
+		temp -> end = temp;
+		temp -> nextfileblock = NULL;
+		disk[1].next = temp -> next; // updates free mem linked list
+		temp -> next = NULL;
+		//printf("post-variable fields filled: %p: %s \n", temp, temp -> name);
+
+		// links to CWD
+		struct file* temp2 = disk[0].place;
+		printf("%p: %s \n", temp2 -> next, temp2 -> name);
+		if(temp2 -> next == NULL){
+			temp2 -> next = temp;
+		}else{
+			/*while(temp2 -> next != NULL){
+				temp2 = temp2 -> next;
+				printf("MAKING SHIT %p: %s \n", temp2, temp2->name);
+				if( temp2 -> next == NULL ){
+					printf("switched \n");
+					temp2 -> next = temp;
+					return;
+				}
+			}*/
+			temp -> next = temp2 -> next;
+			temp2 -> next = temp;
+		}
+	}
+}
+
+void mvdir(char* oldname, char* newname, struct file* disk){
+	// looks at CWD, search through linked list, find the file name
+	struct file* temp = disk[0].place;
+	while( temp -> next != NULL){
+		temp = temp -> next;
+		if((strcmp(temp -> name, oldname) == 0)){
+			temp -> name = newname;
+		}
+	}
+}
+
+void mvfil(char* oldname, char* newname, struct file* disk){
+	struct file* temp = disk[0].place;
+	while ( temp -> next != NULL ){
+		temp = temp -> next;
+		if((strcmp(temp -> name, oldname) == 0)){
+			temp -> name = newname;
+			while( temp -> nextfileblock != NULL){
+				temp = temp -> nextfileblock;
+				temp -> name = newname;			
+			}
+			return;
+		}
+	}
+}
+
+void rmfil(char* name, struct file* disk){
+	struct file* temp = disk[0].place;
+	struct file* predecessor;
+	printf("%p: %s \n", temp -> next -> next, temp -> next -> name);
+	while( temp -> next != NULL){
+		predecessor = temp;
+		temp = temp -> next;
+
+		if(strcmp(temp -> name, name) == 0 && temp -> flag == 1){
+			// reset fields
+			while( temp -> nextfileblock != NULL){
+				temp -> name = "";
+				temp -> flag = 2;
+				temp -> start = NULL;
+				temp -> end = NULL;
+				temp -> place = NULL;
+				temp = temp -> nextfileblock;
+			}
+
+			// connect predecessor
+			predecessor -> next = temp -> next;
+			temp -> next = NULL;
+
+			// add to free mem linked list
+			predecessor = disk[1].next;
+			while( predecessor -> next != NULL){
+				predecessor = predecessor -> next;
+			}
+			predecessor -> next = temp;
+
+		}
+	}
+}
+
+void rmdir(char* name, struct file* disk){
+	printf("GOT IN to RM DIR %s \n", disk[0].place -> name);
+	struct file* temp = disk[0].place;
+	struct file* start;
+	struct file* useless;
+	while(temp -> next != NULL){
+		temp = temp -> next;	
+		printf("test 3: %s \n", temp->name);
+		if(strcmp(temp -> name, name) == 0){
+			start = temp;
+		}	
+	}
+	printf("GOT IN to RM DIR  2\n");
+	while(start -> next != NULL && strcmp(start -> next -> place -> name,disk[0].place -> name) != 0){				
+		printf("WOOOOOOOOOOOOOOOOOOT %p: %s type:%d nextfileblock:%p end: %p next:%p place: %s\n", start, start -> name, start -> flag, start -> nextfileblock, start -> end,start ->next, start -> place -> name);
+		
+		start -> name = "";
+		start -> flag = 2;
+		start -> start = NULL;
+		start -> end = NULL;
+		start -> place = NULL;
+		useless = start;
+		if(start -> nextfileblock != NULL)
+			start = start -> nextfileblock;
+		else
+			start = start -> next;
+
+		//printf("%s %s\n",start -> next -> place -> name, disk[0].place -> name);
+		//start -> nextfileblock = NULL;
+		// reset linked list
+		useless -> next = disk[1].next;
+		disk[1].next = useless;
+	}
+	printf("GOT IN to RM DIR  3\n");
+	while(start -> nextfileblock != NULL){
+		start -> name = "";
+		start -> flag = 2;
+		start -> start = NULL;
+		start -> end = NULL;
+		start -> place = NULL;
+		useless = start;
+		if(start -> nextfileblock != NULL)
+			start = start -> nextfileblock;
+		else
+			start = start -> next;	
+
+		//start -> nextfileblock = NULL;
+		// reset linked list
+		useless -> next = disk[1].next;
+		disk[1].next = useless;
+	}
+	start -> name = "";
+	start -> flag = 2;
+	start -> start = NULL;
+	start -> end = NULL;
+	start -> place = NULL;
+	useless = start;
+	if(start -> nextfileblock != NULL)
+		start = start -> nextfileblock;
+	else
+		start = start -> next;	
+
+	//start -> nextfileblock = NULL;
+	// reset linked list
+	useless -> next = disk[1].next;
+	disk[1].next = useless;
+	
+}
+
+void szfil(char* name, int size, struct file* disk){
+	printf("got into SZFIL \n");
+	// Variable declarations
+	struct file* temp = disk[0].place;
+	struct file* fileblock;
+	struct file* freemem = disk[1].next;
+	struct file* endblock;
+	struct file* link;
+	int numBlocks = size / BYTES;		// New number of bocks for file
+	if( size % BYTES != 0 )
+		numBlocks++;
+	int i = 1;                          	// Counter; this will represent the old file size (in blocks)
+	int j;                              	// Just a counter
+	
+	//printf("FILBLOCK: %p: %s \n", temp, temp -> name);
+  	// 1. find amount of blocks in file using while loop and counter on nextfileblock
+	while( temp -> next != NULL){
+		temp = temp -> next;
+		printf("FILBLOCK: %p: %s \n", temp->next, temp -> name);
+		if((strcmp(temp -> name, name) == 0)){
+			//fileblock = temp;
+			printf("FOUND MATCH IN SZFIL\n");
+			fileblock = temp;
+			link = temp -> next;
+			printf("FILBLOCKsss: %p: %s \n", fileblock, fileblock -> name);
+			while (temp -> nextfileblock != NULL) {
+    			i++;
+				temp = temp -> nextfileblock;
+			}
+			//break;
+		}
+	}
+	
+	if( i == numBlocks) return;
+
+  	// Case 1:  make file larger
+  	if (i < numBlocks) {
+		printf("MAKING FILE LARGER\n");
+
+   		// go to -> end and add more blocks from free mem linked list
+   		// We need to allocate (size - i) new blocks (do we need to move to next before we do this?)
+		fileblock = fileblock -> end;
+		fileblock -> nextfileblock = freemem;
+	
+	
+		for(j = 0; j< (numBlocks - i)-1; j++){	
+			//printf("END BLOCK %p: %s \n", fileblock, fileblock -> name);
+			freemem = freemem -> next;
+		}
+		endblock = freemem;
+		fileblock -> end = endblock;
+
+		freemem = fileblock -> nextfileblock;
+		//printf("END BLOCK %p: %s \n", fileblock, fileblock -> name);
+   		for(j = 0; j< (numBlocks - i); j++){	
+			//printf("END BLOCK %p: %s \n", fileblock, fileblock -> name);
+			freemem -> nextfileblock = freemem -> next;
+			freemem -> name = fileblock -> name;
+			freemem -> flag = 1;
+			freemem -> end = endblock;
+			freemem = freemem -> next;
+		}
+
+		fileblock = fileblock -> end;
+		fileblock -> nextfileblock = NULL;
+		fileblock -> next = link;
+
+		disk[1].next = freemem;
+		printf("IOMASDORMSDTINS %p \n", disk[1].next);
+		//fileblock -> nextfileblock = freemem;
+		
+  	}
+
+  	// Case 2:  make file smaller
+  	if (i > numBlocks) {
+		printf("MAKING FILE SMALLER\n");
+    	for(j=0; j<numBlocks-1; j++){
+			fileblock = fileblock -> nextfileblock;
+		}
+		printf("HERE I AM: %p: %s \n", fileblock, fileblock -> name);
+		//fileblock -> nextfileblock = NULL;
+		link = fileblock -> start -> next;
+		endblock = fileblock;
+		while(fileblock -> nextfileblock != NULL){		
+			fileblock = fileblock -> nextfileblock;
+			printf(" dsfjidfgsdigng: %p : %s flag: %d \n", fileblock, fileblock -> name, fileblock -> flag);
+			fileblock -> name = "";
+			fileblock -> flag = 2;
+			fileblock -> start = NULL;
+			fileblock -> end = NULL;
+			fileblock -> place = NULL;
+
+			fileblock -> next = freemem;
+			freemem = fileblock;
+			
+		}
+		printf("next file blocksfkaiofndugnsdg: %p \n", freemem);
+		endblock -> nextfileblock = NULL;
+		endblock -> next = link;
+  	}
+
+	//reset the file structure
+	temp = disk[0].place;
+	printf("sddddddddddddddd%p: %s \n", temp, temp -> name);
+	while( temp -> next != NULL){
+		temp = temp -> next;
+		if((strcmp(temp -> name, name) == 0)){
+			while (temp -> nextfileblock != NULL) {
+    			temp -> end = endblock;
+				temp -> next = link;
+				temp = temp -> nextfileblock;
+			}
+			temp -> end = endblock;
+			//break;
+		}
+	}
+}
+
+int main(int argc, char *argv[])
+{
+	int i;
+	//-------------------------------------------------------------
+
+	// Sets the disk to all link to each other, this sets up the free memmory map starting at disk[0]
+	// all
+
+	// current working directory
+	struct file* disk = malloc(SIZE * sizeof(struct file));
+	disk[0].name = "Current Working Directory";
+	disk[0].place = &disk[2];
+	disk[1].name = "Free Mem Linked List";
+	// Sets free mem linked list at disk[1]
+	for(i = 3; i<SIZE-1; i++){
+		disk[i].flag = 2;
+		disk[i].name = "";
+		disk[i].next = &disk[i+1];
+	}
+
+	// Sets the last disk spot to be null
+	disk[SIZE].flag = 2;
+	disk[SIZE].name = "";
+	disk[SIZE].next = NULL;
+
+	//disk[3].name = "test";
+
+	// disk[2] will be our root directory
+	disk[2].flag = 0;
+	disk[2].name = "root";
+	disk[2].next = NULL;
+	//disk[0].place = &disk[2];
+	disk[1].next = &disk[3];
+	
+	printf("disk[2].next %p \n", disk[0].place -> next);
+	printf("MKDIR a: %d \n",mkdir("a", disk));
+	//printf("MKDIR b: %d \n",mkdir("b", disk));
+	//printf("MKDIR c: %d \n",mkdir("c", disk));
+	//printf("MKDIR c: %d \n",mkdir("c", disk));
+
+
+	//chdir("..",disk);
+	//chdir("root", disk);
+
+// DO NOT TOUCH --> THIS PRINTS THE LIST OF ALL DIRS/FILES AND WE WILL NEED TO TURN THIS INTO A CALLABLE FUNCTION AT ONE POINT.
+// 							WORKS FOR NOW :^]
+//--------------------------------------------------------------
+
+	printf("start printing our list of dirs/files out\n");
+	// This prints the entire disk
+	//struct file* temp = disk[2].next;
+	/*int z;
+	for(z =0; z<SIZE; z++){
+		printf("%p: %s type:%d nextfileblock:%p end: %p next:%p place: %p start: %p \n", &disk[z], disk[z].name, disk[z].flag, disk[z].nextfileblock, disk[z].end,disk[z].next, disk[z].place, disk[z].start);
+		//temp = temp -> next;
+	}*/
+
+	// This prints out CWD
+	//printf("%p \n", disk[0].place -> next);
+	struct file* out = disk[0].place;
+	if( out->next == NULL){
+		printf("%p: %s type:%d nextfileblock:%p end: %p next:%p\n", out, out -> name, out -> flag, out -> nextfileblock, out -> end,out ->next);
+	}else {
+		while( out -> next != NULL ){
+			out = out -> next;
+			if(out -> place -> name == disk[0].place -> name){
+				printf("%p: %s type:%d nextfileblock:%p end: %p next:%p place: %s\n", out, out -> name, out -> flag, out -> nextfileblock, out -> end,out ->next, out -> place -> name);
+			}	
+		}
+		if(out -> next != NULL && out -> place -> name == disk[0].place -> name){
+				printf("%p: %s type:%d nextfileblock:%p end: %p next:%p place: %s\n", out, out -> name, out -> flag, out -> nextfileblock, out -> end,out ->next, out -> place -> name);
+		}
+	}
+	
+		
+	//printf("%p: %s type:%d end: %p\n", temp, temp->name, temp->flag, temp->end);
+
+//--------------------------------------------------------------
+
+	//printf("%d \n",chdir("FLASH", disk));
+
+	//for(i=0; i<SIZE;i++){
+	//printf("%s \n", disk[0].place -> name);
+	//printf("%s \n", disk[1].place -> name);
+	//printf("%s \n", disk[2].place -> name);
+
+
+
+
+
+
+	//--------------------------------------------------------------
+
+ 	//printf("%d\n",*(root -> arr[0]));
+	return 0;
+}
